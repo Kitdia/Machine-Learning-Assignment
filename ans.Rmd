@@ -1,0 +1,148 @@
+---
+title: "Prediction of Activity Quality from Activity Monitors"
+author: "Kitdia"
+date: "Saturday, January 24, 2015"
+output: html_document
+---
+
+##Goal of project
+
+The goal of this project is to predict the manner in which how well 6 different people performed barbell lifts utilizing data collected from activity monitoring devices. This is the "classe" variable in the training set. I will use 52 variables to predict the results. This report will detail:
+
+- How I built your model, 
+- How I used cross validation
+- What I think the expected out of sample error is
+- Why I made the choices you did. 
+
+I will also use your prediction model to predict 20 different cases. 
+
+##Data
+
+The training data consisted of various movement measurments including acceleration components of the arms and pitch and roll orientations of the dumbell. 
+
+There will also be a prediction data which I will use my final model on to predict 20 different cases.
+
+The data used here was downloaded from the course website
+
+- Training Data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+- Prediction Data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The original data was taken from the originating study linked below. Please see the site and associated paper for more information. http://groupware.les.inf.puc-rio.br/har
+
+##Required packages and setting seed
+
+```{r, echo=TRUE}
+library(caret)
+library(knitr)
+library(randomForest)
+library(rpart)
+library(gbm)
+
+set.seed(140819)
+```
+
+##Data cleaning
+
+####Understanding and cleaning the data
+
+```{r, echo=TRUE}
+#data <- read.csv("/Users/Kit/Documents/R/pml-training.csv")
+#summary(data)
+#describe(data)
+#str(data)
+```
+
+These are the few functions that I used to understand the data and decide what I need to do to clean the data. I'm not including the results since it is not crucial to this report. However, the main areas which are needed to be 'cleaned' are as follow:
+
+- Reading '#DIV/0!' as NA
+- Removal of first 7 columns as they are not suitable to be used as predictor variables
+- Conversion of all remaining variables (except the last column which is the response variable) to numeric class for easy further cleaning
+- Removal of any incomplete predictor variables since the remaining 52 variables seem sufficient for me to build the model.
+
+```{r, echo=TRUE}
+
+data <- read.csv("/Users/Kit/Documents/R/pml-training.csv", na.strings=c("#DIV/0!") )
+options(warn=-1)
+
+data<- data[,-(1:7)]
+
+for(i in 1:(ncol(data)-1)) ###leaving out the last col as it is the response variable
+{
+      data[,i] = as.numeric(as.character(data[,i]))
+}
+
+col.index.retain <- which(colSums(is.na(data)) == 0)
+
+data <- data[col.index.retain]
+
+```
+
+##Create data partition
+
+I will use 1-fold cross validation here. I know its the lazy way, which is why my out of sample error estamination is a large +-10%.
+
+```{r, echo=TRUE}
+xdata <- createDataPartition(y=data$classe, p=0.6, list=FALSE )
+training <- data[xdata,]
+testing <- data[-xdata,]
+```
+
+##Model Building
+
+####Decision Tree
+
+Of all the methods taught in this course, i have only learnt decision tree analysis during my time in university. Naturally I will start of with something that I have greater insights in how it works and so that will be decision tree analysis
+
+```{r, echo=TRUE}
+tree<-rpart(classe ~ ., data = training, method = "class")
+tree.predict<-predict(tree,newdata=testing,type="class")
+confusionMatrix(tree.predict,testing$classe)[[3]]
+```
+
+Results suggest that accuracy rate is not that ideal.
+
+####Random Forest
+
+Next I will use random forest since it is described by the instructor to be one of the better ones out there
+
+```{r, echo=TRUE}
+rand.forest <- randomForest(classe~. , data=training)
+rand.forest.predict<-predict(rand.forest,newdata=testing,type="class")
+confusionMatrix(rand.forest.predict,testing$classe)[[3]]
+```
+
+Results are great!
+
+Since there is such impressive high accuracy, I will expect the out of sample accuracy to not deviate too much, around +- 10%. Even at the lower bound of -10%, accuracy is still impressivea and allowed me to get more than 15 corrects for the submission, which is more than what I hoped for. I will stop my model building here, use this model and see how well I will score in the submission
+
+##Submission Codes and Results
+
+Exceeding my expectation, I am able to get full marks with the code and results below
+
+```{r, echo=TRUE}
+SubmissionData <- read.csv("/Users/Kit/Documents/R/pml-testing.csv", na.strings=c("#DIV/0!"))
+
+SubmissionData <- SubmissionData[,-(1:7)]
+
+for(i in 1:(ncol(SubmissionData)))
+{
+  SubmissionData[,i] = as.numeric(as.character(SubmissionData[,i]))
+}
+
+SubmissionData <- SubmissionData[col.index.retain]
+
+answers <- rand.forest.predict<-predict(rand.forest,newdata=SubmissionData,type="class")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+
+answers
+```
+
